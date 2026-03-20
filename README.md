@@ -1,93 +1,147 @@
-# minio
+# MinIO AIStor — Docker Swarm
 
+Deploy automatizado do [MinIO AIStor](https://min.io/product/aistor) em cluster Docker Swarm com suporte a Traefik reverse proxy e TLS.
 
+## Arquitetura
 
-## Getting started
+Este repositório oferece dois modos de execução:
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+| Modo | Arquivo | Uso |
+|------|---------|-----|
+| **Docker Compose** | `docker-compose.yaml` | Desenvolvimento e testes locais |
+| **Docker Swarm** | `docker-stack.yaml` | Produção com orquestração, Traefik e TLS |
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+O stack de produção integra-se ao [Traefik](https://traefik.io/) para roteamento automático nas portas:
 
-## Add your files
+- **9000** — API S3 (`MINIO_API_HOSTNAME`)
+- **9001** — Console Web (`MINIO_SERVER_HOSTNAME`)
 
-* [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## Pré-requisitos
+
+- [Docker Engine](https://docs.docker.com/engine/install/) 20.10+
+- [Docker Swarm](https://docs.docker.com/engine/swarm/) inicializado
+- Rede externa `swarm-net` criada no cluster
+- Licença válida do MinIO AIStor (arquivo `minio/minio.license`)
+- Traefik configurado no cluster com rede `swarm-net`
+- Certificados TLS (se necessário, em `minio/certs/`)
+
+## Configuração
+
+Copie o template e edite as variáveis de ambiente:
+
+```bash
+cp .env.template .env
+```
+
+### Variáveis de ambiente
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `MINIO_ROOT_USER` | `minioadmin` | Usuário root do MinIO |
+| `MINIO_ROOT_PASSWORD` | `minioadmin` | Senha root do MinIO |
+| `MINIO_SERVER_HOSTNAME` | `s3.example.com` | Hostname do console web |
+| `MINIO_API_HOSTNAME` | `api.example.com` | Hostname da API S3 |
+| `MINIO_NODE_HOSTNAME` | `node-1` | Hostname do nó Swarm para placement |
+| `MINIO_SERVER_URL` | `https://api.example.com` | URL pública da API |
+| `MINIO_BROWSER_REDIRECT_URL` | `https://s3.example.com` | URL de redirecionamento do console |
+| `MINIO_COMPRESSION_ENABLE` | `on` | Habilita compressão de objetos |
+| `MINIO_SITE_NAME` | `production-cluster` | Nome do site/cluster |
+
+## Início Rápido
+
+```bash
+# 1. Gerar .env a partir do template (valida rede swarm-net)
+make setup
+
+# 2. Editar .env com seus valores reais
+vim .env
+
+# 3. Validar a configuração
+make validate
+
+# 4. Implantar no Swarm
+make deploy
+```
+
+## Comandos do Makefile
+
+| Comando | Descrição |
+|---------|-----------|
+| `make help` | Exibe todos os comandos disponíveis |
+| `make setup` | Gera `.env` a partir do template e valida a rede Swarm |
+| `make deploy` | Implanta o stack MinIO no Swarm |
+| `make remove` | Remove o stack MinIO do Swarm |
+| `make status` | Mostra o status dos serviços no stack |
+| `make logs` | Acompanha os logs do MinIO em tempo real |
+| `make pull` | Baixa a imagem mais recente do AIStor |
+| `make validate` | Valida a configuração gerada a partir do compose e do `.env` |
+
+## Deploy com Docker Swarm
+
+O `docker-stack.yaml` configura:
+
+- **Replicação:** 1 réplica por padrão
+- **Restart policy:** `on-failure` com até 3 tentativas
+- **Update strategy:** rollback automático em caso de falha
+- **Placement:** restrição por hostname do nó via `MINIO_NODE_HOSTNAME`
+- **Secrets:** a licença é injetada via Docker Secrets (`MINIO_LICENSE`)
+
+### Volumes
+
+| Volume | Driver | Uso |
+|--------|--------|-----|
+| `minio-data` | `local` | Dados dos objetos |
+| `minio-certs` | `local` | Certificados TLS |
+
+## Traefik e TLS
+
+O stack utiliza labels do Traefik para roteamento automático:
+
+### Rota da API (porta 9000)
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.senaicimatec.com.br/devops/swarm/minio.git
-git branch -M main
-git push -uf origin main
+Host(`${MINIO_API_HOSTNAME}`) → minio-api → :9000
 ```
 
-## Integrate with your tools
+### Rota do Console (porta 9001)
 
-* [Set up project integrations](https://gitlab.senaicimatec.com.br/devops/swarm/minio/-/settings/integrations)
+```
+Host(`${MINIO_SERVER_HOSTNAME}`) → minio-server → :9001
+```
 
-## Collaborate with your team
+Ambas as rotas utilizam o entrypoint `websecure` com TLS habilitado.
 
-* [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+Para configurar certificados TLS, coloque os arquivos em `minio/certs/`:
 
-## Test and Deploy
+```
+minio/certs/
+├── public.crt
+└── private.key
+```
 
-Use the built-in continuous integration in GitLab.
+## Desenvolvimento Local
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+Para testes locais com Docker Compose (sem Swarm):
 
-***
+```bash
+docker compose up -d
+```
 
-# Editing this README
+O MinIO estará disponível em:
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+- API: `http://localhost:9000`
+- Console: `http://localhost:9001`
 
-## Suggestions for a good README
+## Solução de Problemas
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+| Problema | Solução |
+|----------|---------|
+| Rede `swarm-net` não encontrada | Criar com `docker network create --driver overlay swarm-net` |
+| `.env` não encontrado | Executar `make setup` |
+| Falha no deploy | Verificar logs com `make logs` e status com `make status` |
+| Erro de licença | Confirmar que `minio/minio.license` existe e é válido |
+| Traefik não roteia | Verificar se Traefik está na rede `swarm-net` e se os hostnames resolvem |
 
-## Name
-Choose a self-explaining name for your project.
+## Licença
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Este projeto utiliza o [MinIO AIStor](https://min.io/product/aistor), uma solução comercial que requer licença válida. Consulte os termos de uso em [min.io](https://min.io).
