@@ -1,0 +1,13 @@
+services:
+  minio:
+    tty: true
+    ports:
+      - 9000:9000
+      - 9001:9001
+    volumes:
+      - ./minio/data:/mnt/data
+      - ./minio/minio.license:/minio.license
+      - ./minio/certs:/etc/minio/certs
+    container_name: aistor-server
+    image: quay.io/minio/aistor/minio:latest
+    command: minio server /mnt/data --license /minio.license
